@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import Colors from '@/constants/Colors';
-import { Chrome as Home, History, User } from 'lucide-react-native';
+import { Chrome as Home, History, User, MessageSquare } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -26,9 +26,18 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Chat',
           tabBarIcon: ({ color, size }) => (
             <Home size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="avatar"
+        options={{
+          title: 'Avatar',
+          tabBarIcon: ({ color, size }) => (
+            <MessageSquare size={size} color={color} />
           ),
         }}
       />
