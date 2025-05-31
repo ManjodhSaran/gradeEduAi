@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -8,53 +8,30 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { SafeAreaWrapper } from '@/components/layout/SafeAreaWrapper';
-import Input from '@/components/ui/Input';
-import Button from '@/components/ui/Button';
+import { FormBuilder } from '@/components/form/FormBuilder';
 import Colors from '@/constants/Colors';
 import { useDispatch, useSelector } from 'react-redux';
 import { login } from '@/store/slices/authSlice';
 import { AppDispatch, RootState } from '@/store';
-import { User, AtSign, Lock } from 'lucide-react-native';
+import { AtSign, Lock } from 'lucide-react-native';
+import { z } from 'zod';
+
+const loginSchema = {
+  username: z.string().min(1, 'Username is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+};
 
 export default function LoginScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { isLoading, error } = useSelector((state: RootState) => state.auth);
 
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [usernameError, setUsernameError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-
-  const validate = () => {
-    let isValid = true;
-
-    if (!username.trim()) {
-      setUsernameError('Username is required');
-      isValid = false;
-    } else {
-      setUsernameError('');
-    }
-
-    if (!password) {
-      setPasswordError('Password is required');
-      isValid = false;
-    } else {
-      setPasswordError('');
-    }
-
-    return isValid;
-  };
-
-  const handleLogin = async () => {
-    if (!validate()) return;
-
+  const handleLogin = async (data: any) => {
     try {
-      await dispatch(login({ username, password })).unwrap();
+      await dispatch(login(data)).unwrap();
       router.replace('/(app)/(tabs)/');
     } catch (error) {
       // Error is handled by the redux slice
@@ -64,6 +41,24 @@ export default function LoginScreen() {
   const handleSkip = () => {
     router.replace('/(app)/(tabs)/');
   };
+
+  const formFields = [
+    {
+      name: 'username',
+      label: 'Username',
+      placeholder: 'Enter your username',
+      leftIcon: <AtSign size={20} color={Colors.neutral[500]} />,
+      validation: loginSchema.username,
+    },
+    {
+      name: 'password',
+      label: 'Password',
+      placeholder: 'Enter your password',
+      type: 'password',
+      leftIcon: <Lock size={20} color={Colors.neutral[500]} />,
+      validation: loginSchema.password,
+    },
+  ];
 
   return (
     <SafeAreaWrapper>
@@ -85,49 +80,27 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.form}>
-            {error && (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
-
-            <Input
-              label="Username"
-              placeholder="Enter your username"
-              value={username}
-              onChangeText={setUsername}
-              error={usernameError}
-              autoCapitalize="none"
-              leftIcon={<AtSign size={20} color={Colors.neutral[500]} />}
+            <FormBuilder
+              fields={formFields}
+              onSubmit={handleLogin}
+              submitLabel="Login"
+              loading={isLoading}
+              error={error}
             />
 
-            <Input
-              label="Password"
-              placeholder="Enter your password"
-              value={password}
-              onChangeText={setPassword}
-              error={passwordError}
-              secureTextEntry
-              leftIcon={<Lock size={20} color={Colors.neutral[500]} />}
-            />
-
-            <TouchableOpacity onPress={() => router.push('/(auth)/forgot-password')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/(auth)/forgot-password')}
+              style={styles.forgotPasswordButton}
+            >
               <Text style={styles.forgotPassword}>Forgot password?</Text>
             </TouchableOpacity>
 
-            <Button
-              title="Login"
-              onPress={handleLogin}
-              loading={isLoading}
-              style={styles.button}
-            />
-
-            <Button
-              title="Skip Login"
-              variant="outline"
-              onPress={handleSkip}
+            <TouchableOpacity
               style={styles.skipButton}
-            />
+              onPress={handleSkip}
+            >
+              <Text style={styles.skipText}>Skip Login</Text>
+            </TouchableOpacity>
 
             <View style={styles.registerContainer}>
               <Text style={styles.registerText}>Don't have an account? </Text>
@@ -177,28 +150,23 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
   },
-  errorContainer: {
-    backgroundColor: Colors.error[50],
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.error[100],
-  },
-  errorText: {
-    color: Colors.error[700],
-    fontSize: 14,
-  },
-  button: {
-    marginTop: 24,
-  },
-  skipButton: {
-    marginTop: 12,
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
   },
   forgotPassword: {
     color: Colors.primary[600],
-    textAlign: 'right',
-    marginTop: 4,
+    fontWeight: '500',
+  },
+  skipButton: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: Colors.neutral[100],
+    alignItems: 'center',
+  },
+  skipText: {
+    color: Colors.neutral[700],
     fontWeight: '500',
   },
   registerContainer: {

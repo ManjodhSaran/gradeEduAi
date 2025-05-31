@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
@@ -11,9 +11,8 @@ import ChatEmpty from '@/components/chat/ChatEmpty';
 import ChatMessages from '@/components/chat/ChatMessages';
 import ChatInput from '@/components/chat/ChatInput';
 import Colors from '@/constants/Colors';
-import { useDispatch, useSelector } from 'react-redux';
-import { AppDispatch, RootState } from '@/store';
-import { submitQuestion } from '@/store/slices/questionSlice';
+import { useApiMutation, useApiQuery } from '@/hooks/useApi';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Message {
   id: string;
@@ -33,80 +32,41 @@ const initialMessages = [
 ];
 
 export default function HomeScreen() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [selectedFile, setSelectedFile] = useState<any>(null);
+  const queryClient = useQueryClient();
 
-  const dispatch = useDispatch<AppDispatch>();
-  const { isSubmitting, isProcessing } = useSelector((state: RootState) => state.question);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Fetch chat history
+  const { data: messages = initialMessages } = useApiQuery(
+    ['chat-messages'],
+    '/messages',
+    {
+      initialData: initialMessages,
+    }
+  );
+
+  // Send message mutation
+  const { mutate: sendMessage, isLoading: isSending } = useApiMutation('/messages', {
+    onSuccess: () => {
+      queryClient.invalidateQueries(['chat-messages']);
+    },
+  });
+
+  // Send file mutation
+  const { mutate: sendFile, isLoading: isUploading } = useApiMutation('/upload', {
+    onSuccess: () => {
+      queryClient.invalidateQueries(['chat-messages']);
+    },
+  });
 
   const handleSendText = (text: string) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: text,
-      isUser: true,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-    
-    const thinkingMessage: Message = {
-      id: `thinking-${Date.now()}`,
-      content: 'Thinking...',
-      isUser: false,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    
-    setMessages(prev => [...prev, thinkingMessage]);
-    
-    dispatch(submitQuestion({
-      prompt: text,
-      type: 'text',
-    })).then(() => {
-      setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id));
-    });
+    sendMessage({ content: text, type: 'text' });
   };
 
   const handleSendFile = (file: any, type: 'image' | 'pdf') => {
-    setSelectedFile({ file, type });
-    
-    const fileMessage: Message = {
-      id: Date.now().toString(),
-      content: `Sent a ${type === 'image' ? 'photo' : 'PDF document'}`,
-      isUser: true,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    
-    setMessages(prev => [...prev, fileMessage]);
-    
-    const processingMessage: Message = {
-      id: `processing-${Date.now()}`,
-      content: `Processing your ${type === 'image' ? 'image' : 'document'}...`,
-      isUser: false,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    
-    setMessages(prev => [...prev, processingMessage]);
-    
-    dispatch(submitQuestion({
-      prompt: `Analyze this ${type === 'image' ? 'image' : 'document'}`,
-      type,
-      file,
-    })).then(() => {
-      setMessages(prev => prev.filter(msg => msg.id !== processingMessage.id));
-    });
+    sendFile({ file, type });
   };
 
   const handleFeedback = (isPositive: boolean, messageId: string) => {
-    setMessages(prev => 
-      prev.map(msg => 
-        msg.id === messageId 
-          ? { ...msg, content: msg.content + (isPositive ? ' (👍 Helpful)' : ' (👎 Not helpful)') } 
-          : msg
-      )
-    );
+    // Implement feedback mutation
   };
 
   return (
@@ -130,8 +90,7 @@ export default function HomeScreen() {
         <ChatInput
           onSendText={handleSendText}
           onSendFile={handleSendFile}
-          isRecording={isRecording}
-          isLoading={isSubmitting || isProcessing}
+          isLoading={isSending || isUploading}
         />
       </KeyboardAvoidingView>
     </SafeAreaWrapper>
