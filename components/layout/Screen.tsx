@@ -7,6 +7,8 @@ import {
   Platform,
   ScrollView,
   RefreshControl,
+  ActivityIndicator,
+  Text,
 } from 'react-native';
 import { SafeAreaWrapper } from './SafeAreaWrapper';
 import Colors from '@/constants/Colors';
@@ -19,6 +21,13 @@ interface ScreenProps {
   refreshing?: boolean;
   onRefresh?: () => void;
   backgroundColor?: string;
+  loading?: boolean;
+  error?: string;
+  loadingText?: string;
+  errorRetry?: () => void;
+  header?: React.ReactNode;
+  footer?: React.ReactNode;
+  contentContainerStyle?: ViewStyle;
 }
 
 export function Screen({
@@ -29,44 +38,80 @@ export function Screen({
   refreshing = false,
   onRefresh,
   backgroundColor = Colors.white,
+  loading = false,
+  error,
+  loadingText = 'Loading...',
+  errorRetry,
+  header,
+  footer,
+  contentContainerStyle,
 }: ScreenProps) {
-  const content = scrollable ? (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={[styles.scrollContent, style]}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[Colors.primary[500]]}
-            tintColor={Colors.primary[500]}
-          />
-        ) : undefined
-      }
-    >
-      {children}
-    </ScrollView>
-  ) : (
-    <View style={[styles.container, style]}>{children}</View>
-  );
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.primary[500]} />
+          {loadingText && <Text style={styles.loadingText}>{loadingText}</Text>}
+        </View>
+      );
+    }
 
-  const wrappedContent = keyboardAvoiding ? (
+    if (error) {
+      return (
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          {errorRetry && (
+            <TouchableOpacity style={styles.retryButton} onPress={errorRetry}>
+              <Text style={styles.retryText}>Try Again</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    }
+
+    if (scrollable) {
+      return (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, contentContainerStyle, style]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[Colors.primary[500]]}
+                tintColor={Colors.primary[500]}
+              />
+            ) : undefined
+          }
+        >
+          {children}
+        </ScrollView>
+      );
+    }
+
+    return <View style={[styles.container, style]}>{children}</View>;
+  };
+
+  const content = keyboardAvoiding ? (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboardAvoid}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
     >
-      {content}
+      {renderContent()}
     </KeyboardAvoidingView>
   ) : (
-    content
+    renderContent()
   );
 
   return (
     <SafeAreaWrapper style={[styles.screen, { backgroundColor }]}>
-      {wrappedContent}
+      {header}
+      {content}
+      {footer}
     </SafeAreaWrapper>
   );
 }
@@ -86,5 +131,33 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: Colors.neutral[600],
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.error[600],
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.primary[100],
+    borderRadius: 8,
+  },
+  retryText: {
+    fontSize: 14,
+    color: Colors.primary[600],
+    fontWeight: '500',
   },
 });

@@ -51,7 +51,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const pickImage = async () => {
     setIsAttachmentMenuOpen(false);
-    
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -65,13 +65,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const pickDocument = async () => {
     setIsAttachmentMenuOpen(false);
-    
+
     const result = await DocumentPicker.getDocumentAsync({
       type: 'application/pdf',
       copyToCacheDirectory: true,
     });
 
-    if (result.canceled === false && result.assets && result.assets.length > 0) {
+    if (
+      result.canceled === false &&
+      result.assets &&
+      result.assets.length > 0
+    ) {
       onSendFile?.(result.assets[0], 'pdf');
     }
   };
@@ -81,18 +85,31 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       {isAttachmentMenuOpen && (
         <View style={styles.attachmentMenu}>
           <TouchableOpacity style={styles.attachmentOption} onPress={pickImage}>
-            <View style={[styles.attachmentIcon, { backgroundColor: Colors.primary[100] }]}>
+            <View
+              style={[
+                styles.attachmentIcon,
+                { backgroundColor: Colors.primary[100] },
+              ]}
+            >
               <Image size={24} color={Colors.primary[600]} />
             </View>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.attachmentOption} onPress={pickDocument}>
-            <View style={[styles.attachmentIcon, { backgroundColor: Colors.secondary[100] }]}>
+
+          <TouchableOpacity
+            style={styles.attachmentOption}
+            onPress={pickDocument}
+          >
+            <View
+              style={[
+                styles.attachmentIcon,
+                { backgroundColor: Colors.secondary[100] },
+              ]}
+            >
               <File size={24} color={Colors.secondary[600]} />
             </View>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.closeAttachment}
             onPress={() => setIsAttachmentMenuOpen(false)}
           >
@@ -100,15 +117,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </TouchableOpacity>
         </View>
       )}
-      
+
       <View style={styles.inputContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.attachButton}
           onPress={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
         >
           <Image size={24} color={Colors.neutral[500]} />
         </TouchableOpacity>
-        
+
         <TextInput
           ref={inputRef}
           style={styles.input}
@@ -119,24 +136,27 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           editable={!isLoading}
           maxLength={500}
         />
-        
+
         {text.trim() ? (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.sendButton, isLoading && styles.disabledButton]}
             onPress={handleSend}
             disabled={isLoading}
           >
-            <Send size={20} color={isLoading ? Colors.neutral[400] : Colors.white} />
+            <Send
+              size={20}
+              color={isLoading ? Colors.neutral[400] : Colors.white}
+            />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity 
-            style={[
-              styles.micButton,
-              isRecording && styles.recordingButton,
-            ]}
+          <TouchableOpacity
+            style={[styles.micButton, isRecording && styles.recordingButton]}
             onPress={handleRecording}
           >
-            <Mic size={20} color={isRecording ? Colors.white : Colors.neutral[600]} />
+            <Mic
+              size={20}
+              color={isRecording ? Colors.white : Colors.neutral[600]}
+            />
           </TouchableOpacity>
         )}
       </View>

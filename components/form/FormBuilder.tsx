@@ -7,6 +7,7 @@ import {
   TextStyle,
   TouchableOpacity,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { useForm, Controller, UseFormProps } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,13 +17,13 @@ import Button from '../ui/Button';
 import Colors from '@/constants/Colors';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import PhoneInput from 'react-native-phone-number-input';
-import { Eye, EyeOff, ChevronDown } from 'lucide-react-native';
+import { Eye, EyeOff, ChevronDown, Calendar, Search } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
 
 export interface FormField {
   name: string;
   label: string;
-  type?: 'text' | 'email' | 'password' | 'number' | 'phone' | 'date' | 'select' | 'multiselect';
+  type?: 'text' | 'email' | 'password' | 'number' | 'phone' | 'date' | 'select' | 'multiselect' | 'search' | 'textarea' | 'checkbox' | 'radio';
   placeholder?: string;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
@@ -32,6 +33,9 @@ export interface FormField {
   format?: string;
   min?: string | number | Date;
   max?: string | number | Date;
+  rows?: number;
+  helperText?: string;
+  disabled?: boolean;
 }
 
 interface FormBuilderProps {
@@ -42,6 +46,7 @@ interface FormBuilderProps {
   loading?: boolean;
   error?: string;
   formProps?: UseFormProps;
+  scrollable?: boolean;
 }
 
 export function FormBuilder({
@@ -52,6 +57,7 @@ export function FormBuilder({
   loading = false,
   error,
   formProps,
+  scrollable = true,
 }: FormBuilderProps) {
   const [showPassword, setShowPassword] = React.useState<{ [key: string]: boolean }>({});
   const [showDatePicker, setShowDatePicker] = React.useState<{ [key: string]: boolean }>({});
@@ -92,6 +98,7 @@ export function FormBuilder({
 
   const renderField = (field: FormField) => {
     const value = watch(field.name);
+    const error = errors[field.name]?.message?.toString();
 
     switch (field.type) {
       case 'password':
@@ -110,7 +117,8 @@ export function FormBuilder({
               </TouchableOpacity>
             }
             placeholder={field.placeholder}
-            error={errors[field.name]?.message?.toString()}
+            error={error}
+            disabled={field.disabled}
           />
         );
 
@@ -120,31 +128,54 @@ export function FormBuilder({
             control={control}
             name={field.name}
             render={({ field: { onChange, value } }) => (
-              <PhoneInput
-                defaultValue={value}
-                defaultCode="US"
-                layout="first"
-                onChangeFormattedText={onChange}
-                containerStyle={styles.phoneInput}
-                textContainerStyle={styles.phoneInputText}
-                textInputStyle={styles.phoneInputTextInput}
-                codeTextStyle={styles.phoneInputCode}
-              />
+              <View>
+                <Text style={styles.label}>{field.label}</Text>
+                <PhoneInput
+                  defaultValue={value}
+                  defaultCode="US"
+                  layout="first"
+                  onChangeFormattedText={onChange}
+                  containerStyle={[
+                    styles.phoneInput,
+                    error && styles.inputError,
+                    field.disabled && styles.inputDisabled,
+                  ]}
+                  textContainerStyle={styles.phoneInputText}
+                  textInputStyle={styles.phoneInputTextInput}
+                  codeTextStyle={styles.phoneInputCode}
+                  disabled={field.disabled}
+                />
+                {error && <Text style={styles.errorText}>{error}</Text>}
+                {field.helperText && <Text style={styles.helperText}>{field.helperText}</Text>}
+              </View>
             )}
           />
         );
 
       case 'date':
         return (
-          <>
+          <View>
+            <Text style={styles.label}>{field.label}</Text>
             <TouchableOpacity
-              style={styles.dateInput}
-              onPress={() => toggleDatePicker(field.name, true)}
+              style={[
+                styles.dateInput,
+                error && styles.inputError,
+                field.disabled && styles.inputDisabled,
+              ]}
+              onPress={() => !field.disabled && toggleDatePicker(field.name, true)}
+              disabled={field.disabled}
             >
-              <Text style={styles.dateInputText}>
+              <Text style={[
+                styles.dateInputText,
+                !value && styles.placeholderText,
+                field.disabled && styles.disabledText,
+              ]}>
                 {value ? new Date(value).toLocaleDateString() : field.placeholder}
               </Text>
+              <Calendar size={20} color={Colors.neutral[500]} />
             </TouchableOpacity>
+            {error && <Text style={styles.errorText}>{error}</Text>}
+            {field.helperText && <Text style={styles.helperText}>{field.helperText}</Text>}
             {showDatePicker[field.name] && (
               <DateTimePicker
                 value={value ? new Date(value) : new Date()}
@@ -156,22 +187,38 @@ export function FormBuilder({
                     setValue(field.name, selectedDate);
                   }
                 }}
+                minimumDate={field.min ? new Date(field.min) : undefined}
+                maximumDate={field.max ? new Date(field.max) : undefined}
               />
             )}
-          </>
+          </View>
         );
 
       case 'select':
       case 'multiselect':
         return (
-          <TouchableOpacity
-            style={styles.selectInput}
-            onPress={() => setShowPicker(prev => ({ ...prev, [field.name]: true }))}
-          >
-            <Text style={styles.selectInputText}>
-              {field.options?.find(opt => opt.value === value)?.label || field.placeholder}
-            </Text>
-            <ChevronDown size={20} color={Colors.neutral[500]} />
+          <View>
+            <Text style={styles.label}>{field.label}</Text>
+            <TouchableOpacity
+              style={[
+                styles.selectInput,
+                error && styles.inputError,
+                field.disabled && styles.inputDisabled,
+              ]}
+              onPress={() => !field.disabled && setShowPicker(prev => ({ ...prev, [field.name]: true }))}
+              disabled={field.disabled}
+            >
+              <Text style={[
+                styles.selectInputText,
+                !value && styles.placeholderText,
+                field.disabled && styles.disabledText,
+              ]}>
+                {field.options?.find(opt => opt.value === value)?.label || field.placeholder}
+              </Text>
+              <ChevronDown size={20} color={Colors.neutral[500]} />
+            </TouchableOpacity>
+            {error && <Text style={styles.errorText}>{error}</Text>}
+            {field.helperText && <Text style={styles.helperText}>{field.helperText}</Text>}
             {showPicker[field.name] && (
               <Picker
                 selectedValue={value}
@@ -180,6 +227,7 @@ export function FormBuilder({
                   setShowPicker(prev => ({ ...prev, [field.name]: false }));
                 }}
                 style={styles.picker}
+                enabled={!field.disabled}
               >
                 {field.options?.map(option => (
                   <Picker.Item
@@ -190,7 +238,34 @@ export function FormBuilder({
                 ))}
               </Picker>
             )}
-          </TouchableOpacity>
+          </View>
+        );
+
+      case 'search':
+        return (
+          <Input
+            label={field.label}
+            placeholder={field.placeholder}
+            leftIcon={<Search size={20} color={Colors.neutral[500]} />}
+            error={error}
+            autoCapitalize="none"
+            autoCorrect={false}
+            disabled={field.disabled}
+          />
+        );
+
+      case 'textarea':
+        return (
+          <Input
+            label={field.label}
+            placeholder={field.placeholder}
+            multiline
+            numberOfLines={field.rows || 4}
+            textAlignVertical="top"
+            style={styles.textarea}
+            error={error}
+            disabled={field.disabled}
+          />
         );
 
       default:
@@ -202,13 +277,14 @@ export function FormBuilder({
             rightIcon={field.rightIcon}
             keyboardType={field.type === 'number' ? 'numeric' : 'default'}
             autoCapitalize={field.type === 'email' ? 'none' : 'sentences'}
-            error={errors[field.name]?.message?.toString()}
+            error={error}
+            disabled={field.disabled}
           />
         );
     }
   };
 
-  return (
+  const content = (
     <View style={[styles.container, style]}>
       {error && (
         <View style={styles.errorContainer}>
@@ -237,11 +313,28 @@ export function FormBuilder({
       />
     </View>
   );
+
+  if (scrollable) {
+    return (
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {content}
+      </ScrollView>
+    );
+  }
+
+  return content;
 }
 
 const styles = StyleSheet.create({
   container: {
     width: '100%',
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   errorContainer: {
     backgroundColor: Colors.error[50],
@@ -260,6 +353,12 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 24,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+    color: Colors.neutral[700],
   },
   phoneInput: {
     width: '100%',
@@ -287,6 +386,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.neutral[300],
     borderRadius: 8,
     padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   dateInputText: {
     fontSize: 16,
@@ -319,5 +421,27 @@ const styles = StyleSheet.create({
         width: '100%',
       },
     }),
+  },
+  textarea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  placeholderText: {
+    color: Colors.neutral[400],
+  },
+  helperText: {
+    fontSize: 12,
+    color: Colors.neutral[500],
+    marginTop: 4,
+  },
+  inputError: {
+    borderColor: Colors.error[500],
+  },
+  inputDisabled: {
+    backgroundColor: Colors.neutral[100],
+    borderColor: Colors.neutral[300],
+  },
+  disabledText: {
+    color: Colors.neutral[500],
   },
 });
