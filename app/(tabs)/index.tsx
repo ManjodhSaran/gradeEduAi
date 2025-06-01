@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Text,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaWrapper } from '@/components/layout/SafeAreaWrapper';
 import ChatHeader from '@/components/chat/ChatHeader';
@@ -30,8 +31,10 @@ interface Message {
   }[];
   subject?: string;
   topic?: string;
+  isPending?: boolean; // Add pending state for optimistic updates
 }
 
+// Memoized subjects array to prevent re-renders
 const subjects = [
   {
     icon: <Calculator size={24} color={Colors.primary[600]} />,
@@ -55,6 +58,31 @@ const subjects = [
   },
 ];
 
+// Memoized quick prompts to prevent re-creation
+const quickPrompts = [
+  {
+    id: 'explain',
+    text: 'Can you explain this concept?',
+    icon: Lightbulb,
+    color: Colors.primary[600],
+    label: 'Explain Concept',
+  },
+  {
+    id: 'solve',
+    text: 'Can you solve this step by step?',
+    icon: Calculator,
+    color: Colors.secondary[600],
+    label: 'Solve Problem',
+  },
+  {
+    id: 'check',
+    text: 'Can you check my work?',
+    icon: FileText,
+    color: Colors.accent[600],
+    label: 'Check Work',
+  },
+];
+
 const initialMessages = [
   {
     id: '1',
@@ -72,123 +100,294 @@ export default function HomeScreen() {
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [showSubjects, setShowSubjects] = useState(true);
+  const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
 
-  // Fetch chat history
-  const { data: messages = initialMessages, isPending } = useApiQuery(
-    ['chat-messages'],
-    '/messages',
-    {
-      initialData: initialMessages,
-    }
-  );
+  // Fetch chat history with better error handling
+  const {
+    data: serverMessages = [],
+    isPending: isLoadingMessages,
+    error: messagesError,
+    refetch: refetchMessages,
+  } = useApiQuery(['chat-messages', selectedSubject], '/messages', {
+    enabled: !showSubjects && !!selectedSubject,
+    retry: 3,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-  // Send message mutation
+  // Send message mutation with optimistic updates
   const { mutate: sendMessage, isPending: isSending } = useApiMutation(
     '/messages',
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+      onMutate: async (newMessage) => {
+        // Cancel outgoing refetches
+        await queryClient.cancelQueries({
+          queryKey: ['chat-messages', selectedSubject],
+        });
+
+        // Create optimistic message
+        const optimisticMessage: Message = {
+          id: `temp-${Date.now()}`,
+          content: newMessage.content,
+          isUser: true,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          subject: newMessage.subject,
+          isPending: true,
+        };
+
+        // Add to pending messages for immediate UI feedback
+        setPendingMessages((prev) => [...prev, optimisticMessage]);
+
+        return { optimisticMessage };
+      },
+      onSuccess: (data, variables, context) => {
+        // Remove pending message and add real message
+        setPendingMessages((prev) =>
+          prev.filter((msg) => msg.id !== context?.optimisticMessage.id)
+        );
+        queryClient.invalidateQueries({
+          queryKey: ['chat-messages', selectedSubject],
+        });
+      },
+      onError: (error, variables, context) => {
+        // Remove failed message and show error
+        setPendingMessages((prev) =>
+          prev.filter((msg) => msg.id !== context?.optimisticMessage?.id)
+        );
+        // You might want to show an error toast here
+        console.error('Failed to send message:', error);
       },
     }
   );
 
-  // Send file mutation
+  // Send file mutation with optimistic updates
   const { mutate: sendFile, isPending: isUploading } = useApiMutation(
     '/upload',
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+      onMutate: async (fileData) => {
+        const optimisticMessage: Message = {
+          id: `temp-file-${Date.now()}`,
+          content: `Uploading ${fileData.type}...`,
+          isUser: true,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          subject: selectedSubject,
+          isPending: true,
+          attachments: [
+            {
+              type: fileData.type,
+              url: 'pending',
+            },
+          ],
+        };
+
+        setPendingMessages((prev) => [...prev, optimisticMessage]);
+        return { optimisticMessage };
+      },
+      onSuccess: (data, variables, context) => {
+        setPendingMessages((prev) =>
+          prev.filter((msg) => msg.id !== context?.optimisticMessage.id)
+        );
+        queryClient.invalidateQueries({
+          queryKey: ['chat-messages', selectedSubject],
+        });
+      },
+      onError: (error, variables, context) => {
+        setPendingMessages((prev) =>
+          prev.filter((msg) => msg.id !== context?.optimisticMessage?.id)
+        );
+        console.error('Failed to upload file:', error);
       },
     }
   );
 
-  const handleSendText = (text: string) => {
-    sendMessage({
-      content: text,
-      type: 'text',
-      subject: selectedSubject,
+  // Feedback mutation
+  const { mutate: submitFeedback, isPending: isSubmittingFeedback } =
+    useApiMutation('/feedback', {
+      onSuccess: () => {
+        // Optionally show success feedback
+      },
+      onError: (error) => {
+        console.error('Failed to submit feedback:', error);
+      },
     });
-  };
 
-  const handleSendFile = async (file: any, type: 'image' | 'pdf') => {
-    sendFile({ file, type, subject: selectedSubject });
-  };
+  // Memoized handlers to prevent unnecessary re-renders
+  const handleSendText = useCallback(
+    (text: string) => {
+      if (!text.trim() || isSending) return;
 
-  const handleSubjectSelect = (subject: string) => {
+      sendMessage({
+        content: text.trim(),
+        type: 'text',
+        subject: selectedSubject,
+      });
+    },
+    [sendMessage, selectedSubject, isSending]
+  );
+
+  const handleSendFile = useCallback(
+    async (file: any, type: 'image' | 'pdf') => {
+      if (isUploading) return;
+
+      sendFile({
+        file,
+        type,
+        subject: selectedSubject,
+      });
+    },
+    [sendFile, selectedSubject, isUploading]
+  );
+
+  const handleSubjectSelect = useCallback((subject: string) => {
     setSelectedSubject(subject);
     setShowSubjects(false);
-  };
+    // Clear pending messages when switching subjects
+    setPendingMessages([]);
+  }, []);
 
-  const handleStartRecording = () => {
+  const handleStartRecording = useCallback(() => {
+    if (isRecording) return;
     setIsRecording(true);
-    // Implement voice recording logic
-  };
+    // TODO: Implement voice recording logic
+  }, [isRecording]);
 
-  const handleStopRecording = () => {
+  const handleStopRecording = useCallback(() => {
+    if (!isRecording) return;
     setIsRecording(false);
-    // Implement voice recording stop logic
-  };
+    // TODO: Implement voice recording stop logic
+  }, [isRecording]);
 
-  const handleFeedback = (isPositive: boolean, messageId: string) => {
-    // Implement feedback mutation
-  };
+  const handleFeedback = useCallback(
+    (isPositive: boolean, messageId: string) => {
+      submitFeedback({
+        messageId,
+        isPositive,
+        subject: selectedSubject,
+      });
+    },
+    [submitFeedback, selectedSubject]
+  );
 
-  const renderSubjectSelector = () => (
-    <View style={styles.subjectsContainer}>
-      <Text style={styles.subjectsTitle}>Choose a subject to get started:</Text>
-      <View style={styles.subjectsGrid}>
-        {subjects.map((subject) => (
-          <TouchableOpacity
-            key={subject.name}
-            style={[styles.subjectButton, { backgroundColor: subject.color }]}
-            onPress={() => handleSubjectSelect(subject.name)}
-          >
-            {subject.icon}
-            <Text style={styles.subjectText}>{subject.name}</Text>
-          </TouchableOpacity>
-        ))}
+  const handleBackToSubjects = useCallback(() => {
+    setShowSubjects(true);
+    setPendingMessages([]);
+  }, []);
+
+  const handleQuickPrompt = useCallback(
+    (promptText: string) => {
+      handleSendText(promptText);
+    },
+    [handleSendText]
+  );
+
+  // Combine server messages with pending messages
+  const allMessages = useMemo(() => {
+    const baseMessages = showSubjects ? initialMessages : serverMessages;
+    return [...baseMessages, ...pendingMessages];
+  }, [serverMessages, pendingMessages, showSubjects]);
+
+  // Memoized subject selector
+  const subjectSelector = useMemo(
+    () => (
+      <View style={styles.subjectsContainer}>
+        <Text style={styles.subjectsTitle}>
+          Choose a subject to get started:
+        </Text>
+        <View style={styles.subjectsGrid}>
+          {subjects.map((subject) => (
+            <TouchableOpacity
+              key={subject.name}
+              style={[styles.subjectButton, { backgroundColor: subject.color }]}
+              onPress={() => handleSubjectSelect(subject.name)}
+              disabled={isLoadingMessages}
+            >
+              {subject.icon}
+              <Text style={styles.subjectText}>{subject.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
-    </View>
+    ),
+    [handleSubjectSelect, isLoadingMessages]
   );
 
-  const renderQuickPrompts = () => (
-    <View style={styles.promptsContainer}>
-      <Text style={styles.promptsTitle}>Quick Actions:</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.promptsScroll}
-      >
-        <TouchableOpacity
-          style={styles.promptButton}
-          onPress={() => handleSendText('Can you explain this concept?')}
+  // Memoized quick prompts
+  const quickPromptsComponent = useMemo(
+    () => (
+      <View style={styles.promptsContainer}>
+        <Text style={styles.promptsTitle}>Quick Actions:</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.promptsScroll}
         >
-          <Lightbulb size={20} color={Colors.primary[600]} />
-          <Text style={styles.promptText}>Explain Concept</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.promptButton}
-          onPress={() => handleSendText('Can you solve this step by step?')}
-        >
-          <Calculator size={20} color={Colors.secondary[600]} />
-          <Text style={styles.promptText}>Solve Problem</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.promptButton}
-          onPress={() => handleSendText('Can you check my work?')}
-        >
-          <FileText size={20} color={Colors.accent[600]} />
-          <Text style={styles.promptText}>Check Work</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+          {quickPrompts.map((prompt) => {
+            const IconComponent = prompt.icon;
+            return (
+              <TouchableOpacity
+                key={prompt.id}
+                style={styles.promptButton}
+                onPress={() => handleQuickPrompt(prompt.text)}
+                disabled={isSending || isUploading}
+              >
+                <IconComponent size={20} color={prompt.color} />
+                <Text style={styles.promptText}>{prompt.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    ),
+    [handleQuickPrompt, isSending, isUploading]
   );
+
+  // Loading state for initial load
+  if (isLoadingMessages && !showSubjects && allMessages.length === 0) {
+    return (
+      <SafeAreaWrapper style={styles.container}>
+        <ChatHeader
+          subject={selectedSubject}
+          onSubjectChange={handleBackToSubjects}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary[600]} />
+          <Text style={styles.loadingText}>Loading messages...</Text>
+        </View>
+      </SafeAreaWrapper>
+    );
+  }
+
+  // Error state
+  if (messagesError && !showSubjects) {
+    return (
+      <SafeAreaWrapper style={styles.container}>
+        <ChatHeader
+          subject={selectedSubject}
+          onSubjectChange={handleBackToSubjects}
+        />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Failed to load messages</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => refetchMessages()}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaWrapper>
+    );
+  }
 
   return (
     <SafeAreaWrapper style={styles.container}>
       <ChatHeader
         subject={selectedSubject}
-        onSubjectChange={() => setShowSubjects(true)}
+        onSubjectChange={handleBackToSubjects}
       />
 
       <KeyboardAvoidingView
@@ -197,15 +396,19 @@ export default function HomeScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 104}
       >
         {showSubjects ? (
-          renderSubjectSelector()
+          subjectSelector
         ) : (
           <>
-            {messages.length === 0 ? (
+            {allMessages.length <= 1 ? (
               <ChatEmpty />
             ) : (
               <>
-                <ChatMessages messages={messages} onFeedback={handleFeedback} />
-                {renderQuickPrompts()}
+                <ChatMessages
+                  messages={allMessages}
+                  onFeedback={handleFeedback}
+                  isLoadingMore={isLoadingMessages}
+                />
+                {quickPromptsComponent}
               </>
             )}
 
@@ -217,6 +420,7 @@ export default function HomeScreen() {
               isRecording={isRecording}
               isPending={isSending || isUploading}
               placeholder={`Ask anything about ${selectedSubject}...`}
+              disabled={isSending || isUploading || isLoadingMessages}
             />
           </>
         )}
@@ -232,6 +436,40 @@ const styles = StyleSheet.create({
   },
   keyboardAvoid: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.neutral[600],
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.error[600],
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: Colors.primary[600],
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
   subjectsContainer: {
     flex: 1,
