@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-  View,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaWrapper } from '@/components/layout/SafeAreaWrapper';
 import ChatHeader from '@/components/chat/ChatHeader';
 import ChatEmpty from '@/components/chat/ChatEmpty';
@@ -25,9 +20,13 @@ interface Message {
 const initialMessages = [
   {
     id: '1',
-    content: 'Welcome to Grade Edu AI! Ask me any question, and I\'ll provide step-by-step solutions.',
+    content:
+      "Welcome to Grade Edu AI! Ask me any question, and I'll provide step-by-step solutions.",
     isUser: false,
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    timestamp: new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
   },
 ];
 
@@ -44,18 +43,24 @@ export default function HomeScreen() {
   );
 
   // Send message mutation
-  const { mutate: sendMessage, isLoading: isSending } = useApiMutation('/messages', {
-    onSuccess: () => {
-      queryClient.invalidateQueries(['chat-messages']);
-    },
-  });
+  const { mutate: sendMessage, isPending: isSending } = useApiMutation(
+    '/messages',
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['chat-messages']);
+      },
+    }
+  );
 
   // Send file mutation
-  const { mutate: sendFile, isLoading: isUploading } = useApiMutation('/upload', {
-    onSuccess: () => {
-      queryClient.invalidateQueries(['chat-messages']);
-    },
-  });
+  const { mutate: sendFile, isPending: isUploading } = useApiMutation(
+    '/upload',
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['chat-messages']);
+      },
+    }
+  );
 
   const handleSendText = (text: string) => {
     sendMessage({ content: text, type: 'text' });
@@ -72,7 +77,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaWrapper style={styles.container}>
       <ChatHeader />
-      
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoid}
@@ -81,12 +86,9 @@ export default function HomeScreen() {
         {messages.length === 0 ? (
           <ChatEmpty />
         ) : (
-          <ChatMessages
-            messages={messages}
-            onFeedback={handleFeedback}
-          />
+          <ChatMessages messages={messages} onFeedback={handleFeedback} />
         )}
-        
+
         <ChatInput
           onSendText={handleSendText}
           onSendFile={handleSendFile}
