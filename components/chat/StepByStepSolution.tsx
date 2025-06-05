@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Colors from '@/constants/Colors';
-import { CheckCircle2, Circle, ChevronRight } from 'lucide-react-native';
+import { CircleCheck as CheckCircle2, Circle, ChevronRight } from 'lucide-react-native';
 
 interface Step {
   id: string;
